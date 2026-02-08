@@ -102,6 +102,11 @@ The run output includes:
 - Chokepoints table (for long runs)
 - Dotchart of balances
 
+Dotchart is provided by the separate `dotchart` utility:
+```
+https://github.com/ddoxey/dotchart
+```
+
 ## Totals
 
 ```
