@@ -69,6 +69,68 @@ int main() {
   }
 
   {
+    TransactionType income{"Income", "Fri", 500.0, "", ""};
+    TransactionType bill{"Bill", "Fri", -200.0, "", ""};
+    Date now{2026, 2, 7};
+    Budget budget(0.0, {income, bill}, {}, {}, 14, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 4, "Budget event count for same-date sorting");
+    if (events.size() == 4) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "First same-date event date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Second same-date event date");
+      expect(events[0].get_amount() == 500.0,
+             "Same-date events sorted by amount desc (first)");
+      expect(events[1].get_amount() == -200.0,
+             "Same-date events sorted by amount desc (second)");
+    }
+  }
+
+  {
+    TransactionType alpha{"Alpha", "Fri", 100.0, "", ""};
+    TransactionType beta{"Beta", "Fri", 100.0, "", ""};
+    TransactionType gamma{"Gamma", "Fri", -50.0, "", ""};
+    Date now{2026, 2, 7};
+    Budget budget(0.0, {alpha, beta, gamma}, {}, {}, 14, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 6, "Budget event count for tie sorting");
+    if (events.size() == 6) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Tie sorting same-date event date (first)");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Tie sorting same-date event date (second)");
+      expect(events[2].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Tie sorting same-date event date (third)");
+      expect(events[0].get_amount() == 100.0,
+             "Same-date tie amount desc (first)");
+      expect(events[1].get_amount() == 100.0,
+             "Same-date tie amount desc (second)");
+      expect(events[2].get_amount() == -50.0,
+             "Same-date tie amount desc (third)");
+    }
+  }
+
+  {
+    TransactionType small{"Small", "Fri", -100.0, "", ""};
+    TransactionType large{"Large", "Fri", -300.0, "", ""};
+    Date now{2026, 2, 7};
+    Budget budget(0.0, {small, large}, {}, {}, 14, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 4, "Budget event count for negative sorting");
+    if (events.size() == 4) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Negative sorting same-date event date (first)");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+             "Negative sorting same-date event date (second)");
+      expect(events[0].get_amount() == -100.0,
+             "Same-date negative amount desc (first)");
+      expect(events[1].get_amount() == -300.0,
+             "Same-date negative amount desc (second)");
+    }
+  }
+
+  {
     Date now{2026, 2, 7};
     std::vector<Exception> exceptions = {
         {"Rent", Date{2026, 1, 1}, -1000.0},
