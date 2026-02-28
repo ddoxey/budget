@@ -364,6 +364,9 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
           amount = ex_sched->second;
         }
       }
+      if (amount == 0.0) {
+        continue;
+      }
       EventRecord record;
       record.category = trans_type.category;
       record.amount = amount;

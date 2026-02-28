@@ -131,6 +131,22 @@ int main() {
   }
 
   {
+    TransactionType zero_base{"ZeroBase", "Fri", 0.0, "", ""};
+    TransactionType zero_exc{"ZeroException", "Fri", 50.0, "", ""};
+    Date now{2026, 2, 7};
+    Exception exc{"ZeroException", Date{2026, 2, 13}, 0.0};
+    Budget budget(0.0, {zero_base, zero_exc}, {exc}, {}, 14, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 1, "Only non-zero events are kept");
+    if (events.size() == 1) {
+      expect(events[0].get_amount() == 50.0,
+             "Non-zero occurrence remains after zero exception");
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-20-2026",
+             "Later non-zero date remains");
+    }
+  }
+
+  {
     Date now{2026, 2, 7};
     std::vector<Exception> exceptions = {
         {"Rent", Date{2026, 1, 1}, -1000.0},
