@@ -41,6 +41,10 @@ class Cache {
       const std::unordered_map<std::string, std::string>& fallback = {}) const;
   bool write_lasts(
       const std::unordered_map<std::string, std::string>& lasts) const;
+  std::unordered_map<std::string, std::string> read_last_sources(
+      const std::unordered_map<std::string, std::string>& fallback = {}) const;
+  bool write_last_sources(
+      const std::unordered_map<std::string, std::string>& sources) const;
 
   struct ThemeRecord {
     int fg = -1;

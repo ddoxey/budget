@@ -83,7 +83,7 @@ const std::unordered_map<std::string, HelpTopic>& help_topics() {
         "confirmation)."}},
       {"lasts",
        {"List last occurrences",
-        "Usage: lasts\n\nShows last occurrence per category."}},
+        "Usage: lasts\n\nShows last occurrence and source per category."}},
       {"status",
        {"Show status",
         "Usage: status\n\nShows summary of configuration and paths."}},

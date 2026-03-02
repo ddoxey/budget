@@ -1046,6 +1046,7 @@ int main() {
         std::cout << elapsed.str() << std::endl;
 
         cache.write_lasts(budget_model.last_occurrences());
+        cache.write_last_sources(budget_model.last_occurrence_sources());
 
         std::optional<std::string> crash_text;
         if (*days > 60) {
@@ -1227,6 +1228,7 @@ int main() {
       }
 
       auto lasts = cache.read_lasts();
+      auto sources = cache.read_last_sources();
       if (history.empty() && !lasts.empty()) {
         std::cout << "Using cached last occurrences." << std::endl;
         for (const auto& pair : lasts) {
@@ -1235,6 +1237,9 @@ int main() {
           std::replace(date.begin(), date.end(), '-', '/');
           transaction.fields["transaction_date"] = date;
           transaction.fields["cat"] = pair.first;
+          auto source_it = sources.find(pair.first);
+          transaction.fields["last_source"] =
+              source_it != sources.end() ? source_it->second : "unknown";
           history.push_back(std::move(transaction));
         }
       }
@@ -1243,6 +1248,7 @@ int main() {
         std::cout << "Recomputing last occurrences..." << std::endl;
         budget::Budget budget_model(0.0, types, filtered, history, 36, 0);
         cache.write_lasts(budget_model.last_occurrences());
+        cache.write_last_sources(budget_model.last_occurrence_sources());
       }
       std::cout << "Reloaded." << std::endl;
       continue;
@@ -1309,6 +1315,7 @@ int main() {
         continue;
       }
       auto lasts = cache.read_lasts();
+      auto sources = cache.read_last_sources();
       if (lasts.empty()) {
         auto csv_path = budget::io::latest_csv_path();
         if (!csv_path.has_value()) {
@@ -1326,7 +1333,9 @@ int main() {
           budget::Budget budget_model(0.0, types, filtered,
                                       history.transactions, 36, 0);
           lasts = budget_model.last_occurrences();
+          sources = budget_model.last_occurrence_sources();
           cache.write_lasts(lasts);
+          cache.write_last_sources(sources);
         } catch (const std::exception& ex) {
           std::cerr << "lasts error: " << ex.what() << std::endl;
           continue;
@@ -1336,8 +1345,8 @@ int main() {
         std::cout << "No last occurrences available." << std::endl;
         continue;
       }
-      budget::ui::Table table({16, 12});
-      table.header({"Category", "Date"}, "Last Occurrences");
+      budget::ui::Table table({16, 12, 12});
+      table.header({"Category", "Date", "Source"}, "Last Occurrences");
       std::vector<std::string> cats;
       cats.reserve(lasts.size());
       for (const auto& pair : lasts) {
@@ -1345,7 +1354,12 @@ int main() {
       }
       std::sort(cats.begin(), cats.end());
       for (const auto& cat : cats) {
-        table.row({cat, lasts[cat]});
+        std::string source = "unknown";
+        auto source_it = sources.find(cat);
+        if (source_it != sources.end()) {
+          source = source_it->second;
+        }
+        table.row({cat, lasts[cat], source});
       }
       table.close();
       std::cout << table.str();
@@ -1642,8 +1656,11 @@ int main() {
         continue;
       }
       auto lasts = cache.read_lasts();
+      auto sources = cache.read_last_sources();
       lasts[cat] = date->to_mm_dd_yyyy();
+      sources[cat] = "manual";
       cache.write_lasts(lasts);
+      cache.write_last_sources(sources);
       std::cout << "Updated last " << cat << ": " << date->to_mm_dd_yyyy()
                 << std::endl;
       continue;
@@ -1850,9 +1867,12 @@ int main() {
         continue;
       }
       auto lasts = cache.read_lasts();
+      auto sources = cache.read_last_sources();
       if (cat == "*") {
         lasts.clear();
+        sources.clear();
         cache.write_lasts(lasts);
+        cache.write_last_sources(sources);
         std::cout << "Removed all last occurrence records" << std::endl;
         continue;
       }
@@ -1862,7 +1882,9 @@ int main() {
         continue;
       }
       lasts.erase(it);
+      sources.erase(cat);
       cache.write_lasts(lasts);
+      cache.write_last_sources(sources);
       std::cout << "Removed last occurrence for " << cat << std::endl;
       continue;
     }

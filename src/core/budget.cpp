@@ -106,8 +106,7 @@ Date compute_last(const TransactionType& trans_type, const Date& now) {
 
 struct LastsResult {
   std::unordered_map<std::string, Date> last_for;
-  std::unordered_map<std::string, bool> from_history;
-  std::unordered_map<std::string, bool> from_exception;
+  std::unordered_map<std::string, std::string> source_for;
 };
 
 LastsResult find_lasts(const std::vector<Transaction>& history,
@@ -136,13 +135,19 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
       continue;
     }
     result.last_for[*category] = *parsed;
-    result.from_history[*category] = true;
+    std::string source = "history";
+    auto source_it = transaction.fields.find("last_source");
+    if (source_it != transaction.fields.end() && !source_it->second.empty()) {
+      source = source_it->second;
+    }
+    result.source_for[*category] = source;
   }
 
   if (result.last_for.size() != transaction_types.size()) {
     for (const auto& type : transaction_types) {
       if (result.last_for.find(type.category) == result.last_for.end()) {
         result.last_for[type.category] = compute_last(type, now);
+        result.source_for[type.category] = "computed";
       }
     }
   }
@@ -152,7 +157,7 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
       auto it = result.last_for.find(exception.category);
       if (it == result.last_for.end() || it->second < exception.date) {
         result.last_for[exception.category] = exception.date;
-        result.from_exception[exception.category] = true;
+        result.source_for[exception.category] = "exception";
       }
     }
   }
@@ -312,13 +317,15 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
 
   auto lasts = find_lasts(history, transaction_types_, exceptions, now);
   last_occurrence_of_ = lasts.last_for;
+  last_source_of_ = lasts.source_for;
 
   for (const auto& type : transaction_types_) {
-    if (lasts.from_history.find(type.category) != lasts.from_history.end()) {
+    auto source_it = lasts.source_for.find(type.category);
+    if (source_it != lasts.source_for.end() && source_it->second == "history") {
       continue;
     }
-    if (lasts.from_exception.find(type.category) !=
-        lasts.from_exception.end()) {
+    if (source_it != lasts.source_for.end() &&
+        source_it->second == "exception") {
       continue;
     }
     Repetition rep(type.repetition);
@@ -414,6 +421,25 @@ std::unordered_map<std::string, std::string> Budget::last_occurrences() const {
   std::unordered_map<std::string, std::string> result;
   for (const auto& pair : last_occurrence_of_) {
     result[pair.first] = pair.second.to_mm_dd_yyyy();
+  }
+  return result;
+}
+
+std::unordered_map<std::string, std::string> Budget::last_occurrence_sources()
+    const {
+  return last_source_of_;
+}
+
+std::unordered_map<std::string, LastOccurrence>
+Budget::last_occurrence_details() const {
+  std::unordered_map<std::string, LastOccurrence> result;
+  for (const auto& pair : last_occurrence_of_) {
+    LastOccurrence occurrence;
+    occurrence.date = pair.second.to_mm_dd_yyyy();
+    auto source_it = last_source_of_.find(pair.first);
+    occurrence.source =
+        source_it != last_source_of_.end() ? source_it->second : "unknown";
+    result[pair.first] = occurrence;
   }
   return result;
 }

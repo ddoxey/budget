@@ -390,6 +390,47 @@ bool Cache::write_lasts(
   return static_cast<bool>(out);
 }
 
+std::unordered_map<std::string, std::string> Cache::read_last_sources(
+    const std::unordered_map<std::string, std::string>& fallback) const {
+  std::string path = cache_file("last_sources");
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open() || !read_magic(in)) {
+    return fallback;
+  }
+  uint32_t count = 0;
+  if (!read_u32(in, count)) {
+    return fallback;
+  }
+  std::unordered_map<std::string, std::string> result;
+  for (uint32_t i = 0; i < count; ++i) {
+    std::string key;
+    std::string value;
+    if (!read_string(in, key) || !read_string(in, value)) {
+      return fallback;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+bool Cache::write_last_sources(
+    const std::unordered_map<std::string, std::string>& sources) const {
+  std::string path = cache_file("last_sources");
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out.is_open()) {
+    return false;
+  }
+  if (!write_magic(out)) {
+    return false;
+  }
+  write_u32(out, static_cast<uint32_t>(sources.size()));
+  for (const auto& pair : sources) {
+    write_string(out, pair.first);
+    write_string(out, pair.second);
+  }
+  return static_cast<bool>(out);
+}
+
 std::unordered_map<std::string, Cache::ThemeRecord> Cache::read_themes(
     const std::unordered_map<std::string, ThemeRecord>& fallback) const {
   std::string path = cache_file("themes");

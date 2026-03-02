@@ -43,6 +43,11 @@ struct EventRecord {
   int64_t epoch = 0;
 };
 
+struct LastOccurrence {
+  std::string date;
+  std::string source;
+};
+
 class Event {
  public:
   Event(const EventRecord& record, double& balance_ref);
@@ -108,6 +113,9 @@ class Budget {
   ChokepointList chokepoints();
 
   std::unordered_map<std::string, std::string> last_occurrences() const;
+  std::unordered_map<std::string, std::string> last_occurrence_sources() const;
+  std::unordered_map<std::string, LastOccurrence> last_occurrence_details()
+      const;
   std::vector<Event> events_by_category(const std::string& category) const;
   std::vector<Event> events_by_date(const std::string& date_mm_dd_yyyy) const;
   std::vector<Event> events_by_amount(double amount) const;
@@ -118,6 +126,7 @@ class Budget {
   std::unordered_map<std::string, double> totals_;
   std::optional<ChokepointList> chokepoints_;
   std::unordered_map<std::string, Date> last_occurrence_of_;
+  std::unordered_map<std::string, std::string> last_source_of_;
   int days_ = 0;
   double balance_ = 0.0;
 };
