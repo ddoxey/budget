@@ -1,6 +1,9 @@
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -97,6 +100,55 @@ std::vector<std::string> parse_quoted_regexes(const std::string& text) {
     result.push_back(value);
   }
   return result;
+}
+
+std::optional<std::string> format_file_timestamp(
+    const std::filesystem::path& path) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec)) {
+    return std::nullopt;
+  }
+
+  const auto write_time = std::filesystem::last_write_time(path, ec);
+  if (ec) {
+    return std::nullopt;
+  }
+
+  const auto system_now = std::chrono::system_clock::now();
+  const auto file_now = std::filesystem::file_time_type::clock::now();
+  const auto system_time =
+      system_now + std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                       write_time - file_now);
+
+  const std::time_t time = std::chrono::system_clock::to_time_t(system_time);
+  std::tm local_tm{};
+#if defined(_WIN32)
+  if (localtime_s(&local_tm, &time) != 0) {
+    return std::nullopt;
+  }
+#else
+  if (localtime_r(&time, &local_tm) == nullptr) {
+    return std::nullopt;
+  }
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&local_tm, "%m-%d-%Y %H:%M");
+  return out.str();
+}
+
+std::string format_status_file_value(const std::string& raw_path) {
+  if (raw_path.empty()) {
+    return "None";
+  }
+
+  std::filesystem::path path(raw_path);
+  std::string value = path.filename().string();
+  auto timestamp = format_file_timestamp(path);
+  if (timestamp.has_value()) {
+    value += " (" + *timestamp + ")";
+  }
+  return value;
 }
 
 std::optional<std::string> parse_quoted_string(const std::string& text,
@@ -914,12 +966,8 @@ int main() {
       table.set_theme(alternating_row_theme(row_i++));
       table.row({"Download Dir", dl_dir.empty() ? "None" : dl_dir});
       std::string csv_name =
-          csv.has_value() ? std::filesystem::path(*csv).filename().string()
-                          : "None";
-      std::string map_name =
-          map_path.empty()
-              ? "None"
-              : std::filesystem::path(map_path).filename().string();
+          csv.has_value() ? format_status_file_value(*csv) : "None";
+      std::string map_name = format_status_file_value(map_path);
       table.set_theme(alternating_row_theme(row_i++));
       table.row({"CSV File", csv_name});
       table.set_theme(alternating_row_theme(row_i++));
