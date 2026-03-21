@@ -1033,6 +1033,11 @@ int main() {
             budget::filter_exceptions(exceptions, budget::today_est());
         budget::Budget budget_model(balance, transaction_types, filtered,
                                     history.transactions, *days, days_offset);
+        auto last_sources = budget_model.last_occurrence_sources();
+        budget::Date projection_start = budget::today_est();
+        if (days_offset > 0) {
+          projection_start = projection_start.add_days(days_offset);
+        }
 
         budget::ui::Table table({10, -1, 12, 12});
         budget::Money opening(balance, "$");
@@ -1060,7 +1065,15 @@ int main() {
           bal.setf(std::ios::fixed);
           bal.precision(2);
           bal << event.get_balance();
-          table.row({event.get_date().to_mm_dd_yyyy(), event.get_category(),
+          std::string category_label = event.get_category();
+          auto source_it = last_sources.find(event.get_category());
+          if (source_it != last_sources.end() &&
+              (source_it->second == "history-overdue" ||
+               source_it->second == "computed-overdue") &&
+              event.get_date() == projection_start) {
+            category_label += "*";
+          }
+          table.row({event.get_date().to_mm_dd_yyyy(), category_label,
                      amt.str(), bal.str()});
           balances.push_back(event.get_balance());
         }
@@ -1364,14 +1377,8 @@ int main() {
       }
       auto lasts = cache.read_lasts();
       auto sources = cache.read_last_sources();
-      if (lasts.empty()) {
-        auto csv_path = budget::io::latest_csv_path();
-        if (!csv_path.has_value()) {
-          std::cerr
-              << "No CSV found. Set BUDGET_CSV or place a .csv in ~/Downloads."
-              << std::endl;
-          continue;
-        }
+      auto csv_path = budget::io::latest_csv_path();
+      if (csv_path.has_value()) {
         try {
           auto history =
               budget::io::read_transaction_history(*csv_path, map_path);
@@ -1385,14 +1392,28 @@ int main() {
           cache.write_lasts(lasts);
           cache.write_last_sources(sources);
         } catch (const std::exception& ex) {
-          std::cerr << "lasts error: " << ex.what() << std::endl;
-          continue;
+          if (lasts.empty()) {
+            std::cerr << "lasts error: " << ex.what() << std::endl;
+            continue;
+          }
+        }
+      } else if (lasts.empty()) {
+        std::cerr
+            << "No CSV found. Set BUDGET_CSV or place a .csv in ~/Downloads."
+            << std::endl;
+        continue;
+      }
+      if (sources.empty() && !lasts.empty()) {
+        for (const auto& pair : lasts) {
+          sources[pair.first] = "unknown";
         }
       }
       if (lasts.empty()) {
         std::cout << "No last occurrences available." << std::endl;
         continue;
       }
+      auto themes = cache.read_themes();
+      auto fallback = resolve_default_theme(themes);
       budget::ui::Table table({16, 12, 12});
       table.header({"Category", "Date", "Source"}, "Last Occurrences");
       std::vector<std::string> cats;
@@ -1403,11 +1424,22 @@ int main() {
       std::sort(cats.begin(), cats.end());
       for (const auto& cat : cats) {
         std::string source = "unknown";
+        std::string category_label = cat;
         auto source_it = sources.find(cat);
         if (source_it != sources.end()) {
           source = source_it->second;
         }
-        table.row({cat, lasts[cat], source});
+        if (source == "history-overdue" || source == "computed-overdue") {
+          category_label += "*";
+          source = (source == "history-overdue") ? "history" : "computed";
+        }
+        auto theme_it = themes.find(cat);
+        if (theme_it != themes.end()) {
+          table.set_theme(to_theme(theme_it->second));
+        } else {
+          table.set_theme(fallback);
+        }
+        table.row({category_label, lasts[cat], source});
       }
       table.close();
       std::cout << table.str();

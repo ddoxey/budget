@@ -109,6 +109,14 @@ struct LastsResult {
   std::unordered_map<std::string, std::string> source_for;
 };
 
+bool is_history_source(const std::string& source) {
+  return source == "history" || source == "history-overdue";
+}
+
+bool is_overdue_source(const std::string& source) {
+  return source == "history-overdue" || source == "computed-overdue";
+}
+
 LastsResult find_lasts(const std::vector<Transaction>& history,
                        const std::vector<TransactionType>& transaction_types,
                        const std::vector<Exception>& exceptions,
@@ -143,19 +151,42 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
     result.source_for[*category] = source;
   }
 
+  for (const auto& type : transaction_types) {
+    auto last_it = result.last_for.find(type.category);
+    if (last_it == result.last_for.end()) {
+      continue;
+    }
+    auto source_it = result.source_for.find(type.category);
+    if (source_it == result.source_for.end() ||
+        !is_history_source(source_it->second)) {
+      continue;
+    }
+
+    Date scheduled_last = compute_last(type, now);
+    if (last_it->second < scheduled_last) {
+      source_it->second = "history-overdue";
+    }
+  }
+
   if (result.last_for.size() != transaction_types.size()) {
     for (const auto& type : transaction_types) {
       if (result.last_for.find(type.category) == result.last_for.end()) {
-        result.last_for[type.category] = compute_last(type, now);
-        result.source_for[type.category] = "computed";
+        Date computed_last = compute_last(type, now);
+        result.last_for[type.category] = computed_last;
+        result.source_for[type.category] =
+            (computed_last < now) ? "computed-overdue" : "computed";
       }
     }
   }
 
   for (const auto& exception : exceptions) {
-    if (exception.date < now) {
+    if (exception.date <= now) {
       auto it = result.last_for.find(exception.category);
-      if (it == result.last_for.end() || it->second < exception.date) {
+      auto source_it = result.source_for.find(exception.category);
+      if (it == result.last_for.end() || it->second < exception.date ||
+          (it->second == exception.date &&
+           (source_it == result.source_for.end() ||
+            source_it->second != "exception"))) {
         result.last_for[exception.category] = exception.date;
         result.source_for[exception.category] = "exception";
       }
@@ -200,6 +231,49 @@ std::vector<Date> build_date_list(const std::string& repetition,
   }
 
   return dates;
+}
+
+double resolve_event_amount(
+    const std::unordered_map<std::string, double>& exception_for,
+    const TransactionType& trans_type, const Date& scheduled,
+    const Date& adjusted) {
+  double amount = trans_type.amount;
+  auto key_adjusted = adjusted.to_mm_dd_yyyy() + ":" + trans_type.category;
+  auto key_scheduled = scheduled.to_mm_dd_yyyy() + ":" + trans_type.category;
+  auto ex_it = exception_for.find(key_adjusted);
+  if (ex_it != exception_for.end()) {
+    amount = ex_it->second;
+  } else {
+    auto ex_sched = exception_for.find(key_scheduled);
+    if (ex_sched != exception_for.end()) {
+      amount = ex_sched->second;
+    }
+  }
+  return amount;
+}
+
+double overdue_catchup_amount(
+    const std::unordered_map<std::string, double>& exception_for,
+    const TransactionType& trans_type, const Date& last_occurrence,
+    const Date& now, bool include_last_occurrence) {
+  Repetition repetition(trans_type.repetition);
+  double total = 0.0;
+  if (include_last_occurrence) {
+    total += resolve_event_amount(exception_for, trans_type, last_occurrence,
+                                  last_occurrence);
+  }
+  auto dates = build_date_list(
+      trans_type.repetition, last_occurrence, last_occurrence,
+      now.days_since_epoch() - last_occurrence.days_since_epoch());
+  for (const auto& date : dates) {
+    Date adjusted =
+        repetition.auto_flag() ? adjust_to_business_day(date) : date;
+    if (adjusted <= last_occurrence || adjusted > now) {
+      continue;
+    }
+    total += resolve_event_amount(exception_for, trans_type, date, adjusted);
+  }
+  return total;
 }
 
 }  // namespace
@@ -321,7 +395,8 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
 
   for (const auto& type : transaction_types_) {
     auto source_it = lasts.source_for.find(type.category);
-    if (source_it != lasts.source_for.end() && source_it->second == "history") {
+    if (source_it != lasts.source_for.end() &&
+        is_history_source(source_it->second)) {
       continue;
     }
     if (source_it != lasts.source_for.end() &&
@@ -351,6 +426,24 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
       continue;
     }
     Repetition repetition(trans_type.repetition);
+    auto source_it = last_source_of_.find(trans_type.category);
+    std::string source =
+        source_it != last_source_of_.end() ? source_it->second : "";
+    bool overdue = is_overdue_source(source);
+    if (overdue) {
+      double catchup = overdue_catchup_amount(
+          exception_for, trans_type, it->second, now,
+          source == "computed-overdue");
+      if (catchup != 0.0) {
+        EventRecord record;
+        record.category = trans_type.category;
+        record.amount = catchup;
+        record.date = now;
+        record.yyyymmdd = now.to_yyyymmdd();
+        record.epoch = now.epoch_seconds_est_midnight();
+        event_records.push_back(record);
+      }
+    }
     auto dates = build_date_list(trans_type.repetition, now, it->second, days);
     for (const auto& date : dates) {
       Date adjusted =
@@ -358,19 +451,11 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
       if (adjusted <= it->second) {
         continue;
       }
-      double amount = trans_type.amount;
-      auto key_adjusted =
-          adjusted.to_mm_dd_yyyy() + ":" + trans_type.category;
-      auto key_scheduled = date.to_mm_dd_yyyy() + ":" + trans_type.category;
-      auto ex_it = exception_for.find(key_adjusted);
-      if (ex_it != exception_for.end()) {
-        amount = ex_it->second;
-      } else {
-        auto ex_sched = exception_for.find(key_scheduled);
-        if (ex_sched != exception_for.end()) {
-          amount = ex_sched->second;
-        }
+      if (overdue && adjusted <= now) {
+        continue;
       }
+      double amount =
+          resolve_event_amount(exception_for, trans_type, date, adjusted);
       if (amount == 0.0) {
         continue;
       }
@@ -482,7 +567,7 @@ std::vector<Exception> filter_exceptions(
   std::vector<Exception> future;
 
   for (const auto& exc : exceptions) {
-    if (exc.date < now) {
+    if (exc.date <= now) {
       auto it = latest_expired.find(exc.category);
       if (it == latest_expired.end() || it->second.date < exc.date) {
         latest_expired[exc.category] = exc;

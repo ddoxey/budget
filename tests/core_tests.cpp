@@ -151,6 +151,7 @@ int main() {
     std::vector<Exception> exceptions = {
         {"Rent", Date{2026, 1, 1}, -1000.0},
         {"Rent", Date{2026, 2, 1}, -1100.0},
+        {"Rent", Date{2026, 2, 7}, -1150.0},
         {"Rent", Date{2026, 3, 1}, -1200.0},
         {"Gym", Date{2025, 12, 1}, -40.0},
         {"Gym", Date{2026, 1, 1}, -45.0},
@@ -161,21 +162,23 @@ int main() {
     int gym_past = 0;
     int future = 0;
     for (const auto& exc : filtered) {
-      if (exc.date < now) {
+      if (exc.date <= now) {
         if (exc.category == "Rent") {
           rent_past += 1;
-          expect(exc.amount == -1100.0, "Latest past Rent exception preserved");
+          expect(exc.amount == -1150.0,
+                 "Latest through-today Rent exception preserved");
         }
         if (exc.category == "Gym") {
           gym_past += 1;
-          expect(exc.amount == -45.0, "Latest past Gym exception preserved");
+          expect(exc.amount == -45.0,
+                 "Latest through-today Gym exception preserved");
         }
       } else {
         future += 1;
       }
     }
-    expect(rent_past == 1, "Single past Rent exception preserved");
-    expect(gym_past == 1, "Single past Gym exception preserved");
+    expect(rent_past == 1, "Single through-today Rent exception preserved");
+    expect(gym_past == 1, "Single through-today Gym exception preserved");
     expect(future == 2, "All future exceptions preserved");
   }
 
@@ -191,6 +194,97 @@ int main() {
              "Header mapping includes description");
       expect(fields.find("debit") != fields.end(),
              "Header mapping includes debit");
+    }
+  }
+
+  {
+    TransactionType paycheck{"Paycheck", "Fri", 100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Paycheck";
+    history_tx.fields["transaction_date"] = "01/30/2026";
+    Date now{2026, 2, 14};  // Saturday, one day after a missed Friday
+    Budget budget(0.0, {paycheck}, {}, {history_tx}, 7, 0, now);
+    auto lasts = budget.last_occurrence_details();
+    auto events = budget.events();
+    expect(lasts.find("Paycheck") != lasts.end(),
+           "Last occurrence detail exists for overdue history");
+    if (lasts.find("Paycheck") != lasts.end()) {
+      expect(lasts["Paycheck"].date == "01-30-2026",
+             "Overdue history keeps the actual last occurrence date");
+      expect(lasts["Paycheck"].source == "history-overdue",
+             "Overdue history source is labeled");
+    }
+    expect(events.size() == 2,
+           "Overdue history produces catch-up today plus next future event");
+    if (events.size() == 2) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-14-2026",
+             "Catch-up event is inserted on today");
+      expect(events[0].get_amount() == 200.0,
+             "Catch-up event sums missed occurrences through today");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-20-2026",
+             "Next future occurrence remains scheduled");
+      expect(events[1].get_amount() == 100.0,
+             "Future occurrence keeps base amount");
+    }
+  }
+
+  {
+    TransactionType groceries{"Groceries", "Fri", -75.0, "", ""};
+    Date now{2026, 2, 14};  // Saturday, after a computed Friday occurrence
+    Budget budget(0.0, {groceries}, {}, {}, 7, 0, now);
+    auto lasts = budget.last_occurrence_details();
+    auto events = budget.events();
+    expect(lasts.find("Groceries") != lasts.end(),
+           "Computed overdue detail exists");
+    if (lasts.find("Groceries") != lasts.end()) {
+      expect(lasts["Groceries"].date == "02-13-2026",
+             "Computed overdue keeps the inferred last occurrence date");
+      expect(lasts["Groceries"].source == "computed-overdue",
+             "Computed overdue source is labeled internally");
+    }
+    expect(events.size() == 2,
+           "Computed overdue produces catch-up today plus next future event");
+    if (events.size() == 2) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-14-2026",
+             "Computed overdue catch-up is inserted on today");
+      expect(events[0].get_amount() == -75.0,
+             "Computed overdue catch-up includes the inferred missed amount");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-20-2026",
+             "Computed overdue keeps the next future occurrence");
+      expect(events[1].get_amount() == -75.0,
+             "Future computed-overdue occurrence keeps base amount");
+    }
+  }
+
+  {
+    TransactionType groceries{"Groceries", "Fri", -75.0, "", ""};
+    Date now{2026, 2, 14};
+    Exception exc{"Groceries", Date{2026, 2, 14}, -120.0};
+    Budget budget(0.0, {groceries}, {exc}, {}, 7, 0, now);
+    auto lasts = budget.last_occurrence_details();
+    expect(lasts.find("Groceries") != lasts.end(),
+           "Exception-backed detail exists for computed category");
+    if (lasts.find("Groceries") != lasts.end()) {
+      expect(lasts["Groceries"].date == "02-14-2026",
+             "Today exception becomes the last occurrence date");
+      expect(lasts["Groceries"].source == "exception",
+             "Today exception overrides computed source");
+    }
+  }
+
+  {
+    TransactionType groceries{"Groceries", "Fri", -75.0, "", ""};
+    Date now{2026, 2, 14};
+    Exception exc{"Groceries", Date{2026, 2, 13}, -120.0};
+    Budget budget(0.0, {groceries}, {exc}, {}, 7, 0, now);
+    auto lasts = budget.last_occurrence_details();
+    expect(lasts.find("Groceries") != lasts.end(),
+           "Equal-date exception detail exists");
+    if (lasts.find("Groceries") != lasts.end()) {
+      expect(lasts["Groceries"].date == "02-13-2026",
+             "Equal-date exception keeps the shared last occurrence date");
+      expect(lasts["Groceries"].source == "exception",
+             "Equal-date exception overrides computed source");
     }
   }
 

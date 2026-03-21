@@ -46,7 +46,10 @@ TEST(RepetitionAutoFlag, NonAutoDoesNotShiftWeekend) {
   Budget budget(0.0, {rent}, {}, {}, 14, 0, now);
   auto events = budget.events();
   ASSERT_FALSE(events.empty());
-  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "02-07-2026");
+  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "02-01-2026");
+  EXPECT_EQ(events[0].get_amount(), -100.0);
+  ASSERT_GE(events.size(), 2u);
+  EXPECT_EQ(events[1].get_date().to_mm_dd_yyyy(), "02-07-2026");
 }
 
 TEST(RepetitionAutoFlag, AutoShiftsWeekendToFriday) {
@@ -55,7 +58,10 @@ TEST(RepetitionAutoFlag, AutoShiftsWeekendToFriday) {
   Budget budget(0.0, {rent}, {}, {}, 14, 0, now);
   auto events = budget.events();
   ASSERT_FALSE(events.empty());
-  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "02-06-2026");
+  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "02-01-2026");
+  EXPECT_EQ(events[0].get_amount(), -100.0);
+  ASSERT_GE(events.size(), 2u);
+  EXPECT_EQ(events[1].get_date().to_mm_dd_yyyy(), "02-06-2026");
 }
 
 TEST(RepetitionAutoFlag, AutoShiftsHolidayToPriorBusinessDay) {
@@ -65,5 +71,8 @@ TEST(RepetitionAutoFlag, AutoShiftsHolidayToPriorBusinessDay) {
   Budget budget(0.0, {pay}, {exc}, {}, 10, 0, now);
   auto events = budget.events();
   ASSERT_FALSE(events.empty());
-  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "07-03-2025");
+  EXPECT_EQ(events[0].get_date().to_mm_dd_yyyy(), "07-01-2025");
+  EXPECT_EQ(events[0].get_amount(), 100.0);
+  ASSERT_GE(events.size(), 2u);
+  EXPECT_EQ(events[1].get_date().to_mm_dd_yyyy(), "07-03-2025");
 }
