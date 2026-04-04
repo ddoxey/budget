@@ -23,6 +23,11 @@ The CLI looks for `budget.json` in the current directory or your home
 directory to configure paths. The status table reports the active config,
 download, and cache directories.
 
+For file entries such as the latest CSV and header map, `status` also shows
+the file's last modification timestamp:
+
+- `transactions-3.csv (03-21-2025 15:18)`
+
 Header mapping is stored as plain JSON and can be edited interactively:
 
 - `headers` — show mappings
@@ -34,6 +39,10 @@ Theme config is stored in `budget_theme.json` (in the config dir):
 - `themeconfig` — show loaded values
 - `update theme <cat|default> <fg> <bg> <style>`
 - `themes randomize [category]`
+- `themes rotate`
+- `themes reset`
+- `themes show default`
+- `del theme <cat|*> [-f]`
 
 ## Key Commands
 
@@ -48,8 +57,13 @@ Theme config is stored in `budget_theme.json` (in the config dir):
 - `cats` — list categories (multi-column)
 - `exceptions` — list exceptions
 - `lasts` — list last occurrences
+- `update last <cat> <mm-dd-yyyy>`
+- `del last <cat|*>`
 - `run <number>(d|m|y) [<start-date>]` — projections
 - `totals <number>(d|m|y)` — totals per category
+- `del exception <cat> <mm-dd-yyyy|*>`
+- `del transaction <cat>`
+- `del profile <name>`
 - `reload` — reprocess CSV + cache
 - `clear` — clear terminal
 - `exit` / `quit`
@@ -89,6 +103,24 @@ Exceptions override a single occurrence amount:
 update exception PAYDAY 02-14-2026 1750
 ```
 
+If an exception date is today or in the past, it becomes the source of the
+last occurrence for that category.
+
+## Last Occurrences
+
+`lasts` shows the current last occurrence date and source for each category.
+
+- `history` — observed in CSV history
+- `computed` — inferred from the repetition rule
+- `exception` — taken from an exception date
+
+If a category appears overdue, the category name is shown with `*`.
+
+- `history*` categories are overdue relative to observed history
+- `computed*` categories are inferred from repetition and appear overdue
+
+The `lasts` table also uses category theme colors when configured.
+
 ## Projections
 
 ```
@@ -98,9 +130,14 @@ run 90d 03-01-2026
 
 The run output includes:
 - Event table (with monthly boundaries)
+- Present-day catch-up rows for overdue categories, marked with `*`
 - Duration summary
 - Chokepoints table (for long runs)
 - Dotchart of balances
+
+For overdue categories, the catch-up row on today's date uses the sum of all
+missed occurrences through today. This applies to both stale history-backed
+categories and overdue computed categories.
 
 Dotchart is provided by the separate `dotchart` utility:
 ```
