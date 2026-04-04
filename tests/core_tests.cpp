@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <vector>
 
 #include "../src/core/budget.h"
@@ -23,6 +25,11 @@ void expect(bool condition, const std::string& message) {
     std::cerr << "FAIL: " << message << "\n";
     failures++;
   }
+}
+
+void write_text_file(const std::string& path, const std::string& contents) {
+  std::ofstream out(path, std::ios::binary);
+  out << contents;
 }
 
 int main() {
@@ -105,11 +112,13 @@ int main() {
     Date now{2026, 2, 7};  // Saturday
     Budget budget(0.0, {payday}, {}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 2, "Budget event count for Fri over 14 days");
-    if (events.size() == 2) {
-      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+    expect(events.size() == 3, "Budget event count for Fri over 14 days");
+    if (events.size() == 3) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-07-2026",
+             "Computed overdue catch-up date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
              "First Friday event date");
-      expect(events[1].get_date().to_mm_dd_yyyy() == "02-20-2026",
+      expect(events[2].get_date().to_mm_dd_yyyy() == "02-20-2026",
              "Second Friday event date");
     }
   }
@@ -213,9 +222,9 @@ int main() {
     Exception exc{"Payday", Date{2026, 2, 13}, 250.0};
     Budget budget(0.0, {payday}, {exc}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 2, "Budget event count with exception");
-    if (events.size() == 2) {
-      expect(events[0].get_amount() == 250.0,
+    expect(events.size() == 3, "Budget event count with exception");
+    if (events.size() == 3) {
+      expect(events[1].get_amount() == 250.0,
              "Exception amount applied on date");
     }
   }
@@ -226,11 +235,11 @@ int main() {
     Date now{2026, 2, 7};
     Budget budget(0.0, {income, bill}, {}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 4, "Budget event count for same-date sorting");
-    if (events.size() == 4) {
-      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+    expect(events.size() == 6, "Budget event count for same-date sorting");
+    if (events.size() == 6) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "First same-date event date");
-      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Second same-date event date");
       expect(events[0].get_amount() == 500.0,
              "Same-date events sorted by amount desc (first)");
@@ -246,13 +255,13 @@ int main() {
     Date now{2026, 2, 7};
     Budget budget(0.0, {alpha, beta, gamma}, {}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 6, "Budget event count for tie sorting");
-    if (events.size() == 6) {
-      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+    expect(events.size() == 9, "Budget event count for tie sorting");
+    if (events.size() == 9) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Tie sorting same-date event date (first)");
-      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Tie sorting same-date event date (second)");
-      expect(events[2].get_date().to_mm_dd_yyyy() == "02-13-2026",
+      expect(events[2].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Tie sorting same-date event date (third)");
       expect(events[0].get_amount() == 100.0,
              "Same-date tie amount desc (first)");
@@ -269,11 +278,11 @@ int main() {
     Date now{2026, 2, 7};
     Budget budget(0.0, {small, large}, {}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 4, "Budget event count for negative sorting");
-    if (events.size() == 4) {
-      expect(events[0].get_date().to_mm_dd_yyyy() == "02-13-2026",
+    expect(events.size() == 6, "Budget event count for negative sorting");
+    if (events.size() == 6) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Negative sorting same-date event date (first)");
-      expect(events[1].get_date().to_mm_dd_yyyy() == "02-13-2026",
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-07-2026",
              "Negative sorting same-date event date (second)");
       expect(events[0].get_amount() == -100.0,
              "Same-date negative amount desc (first)");
@@ -289,11 +298,15 @@ int main() {
     Exception exc{"ZeroException", Date{2026, 2, 13}, 0.0};
     Budget budget(0.0, {zero_base, zero_exc}, {exc}, {}, 14, 0, now);
     auto events = budget.events();
-    expect(events.size() == 1, "Only non-zero events are kept");
-    if (events.size() == 1) {
+    expect(events.size() == 2, "Only non-zero events are kept");
+    if (events.size() == 2) {
       expect(events[0].get_amount() == 50.0,
+             "Computed overdue non-zero event is kept");
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-07-2026",
+             "Computed overdue non-zero date remains");
+      expect(events[1].get_amount() == 50.0,
              "Non-zero occurrence remains after zero exception");
-      expect(events[0].get_date().to_mm_dd_yyyy() == "02-20-2026",
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-20-2026",
              "Later non-zero date remains");
     }
   }
@@ -335,8 +348,15 @@ int main() {
   }
 
   {
-    auto history = read_transaction_history("var/tranactions.csv",
-                                            "/tmp/budget_header_map.json");
+    std::filesystem::path csv_path =
+        std::filesystem::temp_directory_path() / "budget_core_history.csv";
+    std::filesystem::path map_path =
+        std::filesystem::temp_directory_path() / "budget_core_header_map.json";
+    write_text_file(csv_path.string(),
+                    "Posting Date,Transaction Date,Amount,Description\n"
+                    "02/07/2026,02/06/2026,-12.34,Coffee Shop\n");
+    std::filesystem::remove(map_path);
+    auto history = read_transaction_history(csv_path.string(), map_path.string());
     expect(!history.transactions.empty(), "CSV history loaded");
     if (!history.transactions.empty()) {
       const auto& fields = history.transactions[0].fields;
@@ -347,6 +367,8 @@ int main() {
       expect(fields.find("debit") != fields.end(),
              "Header mapping includes debit");
     }
+    std::filesystem::remove(csv_path);
+    std::filesystem::remove(map_path);
   }
 
   {
