@@ -81,8 +81,35 @@ Examples:
 ```
 update transaction PAYDAY Fri 1500
 update transaction Rent 1/2 -2200
+update transaction Mortgage 1,15 -1200
+update transaction Spending 2xWeek+2 -60
+update transaction Utilities 2xMonth -150
 update transaction Gym Tue/4 -40 r'.*Planet Fitness.*'
 ```
+
+Supported repetition forms:
+
+- Explicit weekday:
+  `Fri`, `Tue/2`
+- Explicit day-of-month:
+  `1`, `1,15`, `1/2`, `1,15/2`
+- Evenly distributed counted schedule:
+  `2xWeek`, `2xWeek+2`, `2xMonth`, `2xMonth+1`
+
+For monthly schedules, comma-separated days mean exact dates within each active
+month. For example, `1,15` schedules the transaction on the 1st and 15th.
+
+Counted schedules spread occurrences as evenly as possible across the period:
+
+- `2xWeek` maps to `Sun, Thu`
+- `2xWeek+2` rotates that to `Tue, Sat`
+- `2xMonth` starts on day 1 and spreads the remaining occurrences across the
+  month
+- `2xMonth+1` shifts that pattern forward one day, so in a 30-day month it
+  becomes `2,16`
+
+In the `transactions` table, counted schedules are shown in readable form. For
+example, `2xMonth+1` is displayed as `Twice a month (starting on 2nd)`.
 
 ### Auto Scheduling
 

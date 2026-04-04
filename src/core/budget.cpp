@@ -11,6 +11,67 @@ namespace budget {
 
 namespace {
 
+int month_index(const Date& date) {
+  return date.year * 12 + (date.month - 1);
+}
+
+Date first_day_of_month_from_index(int index) {
+  int year = index / 12;
+  int month = index % 12;
+  if (month < 0) {
+    month += 12;
+    year -= 1;
+  }
+  return Date{year, month + 1, 1};
+}
+
+int days_in_month(int year, int month) {
+  static const int base_days[] = {31, 28, 31, 30, 31, 30,
+                                  31, 31, 30, 31, 30, 31};
+  if (month == 2) {
+    bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    return leap ? 29 : 28;
+  }
+  return base_days[month - 1];
+}
+
+bool date_matches_repetition(const Repetition& repetition, const Date& date) {
+  if (repetition.kind() == RepetitionKind::CountPerWeek) {
+    auto positions = repetition.positions_in_week();
+    return std::find(positions.begin(), positions.end(),
+                     date.weekday_index()) != positions.end();
+  }
+  if (repetition.kind() == RepetitionKind::CountPerMonth) {
+    auto positions =
+        repetition.positions_in_month(days_in_month(date.year, date.month));
+    return std::find(positions.begin(), positions.end(), date.day) !=
+           positions.end();
+  }
+  std::string value = repetition.field() == "%d"
+                          ? date.to_mm_dd_yyyy().substr(3, 2)
+                          : date.weekday_name();
+  auto vals = repetition.values();
+  return std::find(vals.begin(), vals.end(), value) != vals.end();
+}
+
+bool is_active_month_from_anchor(const Repetition& repetition, const Date& anchor,
+                                 const Date& date) {
+  if (repetition.kind() != RepetitionKind::ExplicitMonthDays) {
+    return true;
+  }
+  int delta = month_index(date) - month_index(anchor);
+  return delta >= 0 && delta % repetition.repeater() == 0;
+}
+
+bool is_active_month_for_last(const Repetition& repetition, const Date& now,
+                              const Date& date) {
+  if (repetition.kind() != RepetitionKind::ExplicitMonthDays) {
+    return true;
+  }
+  int delta = month_index(now) - month_index(date);
+  return delta >= 0 && delta % repetition.repeater() == repetition.repeater() - 1;
+}
+
 bool regex_match_ci(const std::string& text, const std::string& pattern) {
   if (pattern.empty()) {
     return false;
@@ -63,25 +124,57 @@ std::optional<std::string> categorize_transaction(
 }
 
 Date compute_last(const TransactionType& trans_type, const Date& now) {
-  int max_days_ago = 365;
   Repetition repetition(trans_type.repetition);
-  if (repetition.field() == "%d") {
-    max_days_ago = 1 + repetition.repeater() * 31;
-  } else if (repetition.field() == "%a") {
-    max_days_ago = 1 + repetition.repeater() * 7;
+  if (repetition.kind() == RepetitionKind::ExplicitMonthDays ||
+      repetition.kind() == RepetitionKind::CountPerMonth) {
+    for (int month_delta = 0; month_delta <= repetition.repeater() + 12;
+         ++month_delta) {
+      Date month_start =
+          first_day_of_month_from_index(month_index(Date{now.year, now.month, 1}) -
+                                        month_delta);
+      if (!is_active_month_for_last(repetition, now, month_start)) {
+        continue;
+      }
+
+      std::vector<int> month_days;
+      if (repetition.kind() == RepetitionKind::CountPerMonth) {
+        month_days =
+            repetition.positions_in_month(days_in_month(month_start.year,
+                                                        month_start.month));
+      } else {
+        auto vals = repetition.values();
+        month_days.reserve(vals.size());
+        for (const auto& value : vals) {
+          month_days.push_back(std::stoi(value));
+        }
+      }
+
+      for (auto it = month_days.rbegin(); it != month_days.rend(); ++it) {
+        if (*it > days_in_month(month_start.year, month_start.month)) {
+          continue;
+        }
+        Date candidate{month_start.year, month_start.month, *it};
+        if (candidate <= now) {
+          return repetition.auto_flag() ? adjust_to_business_day(candidate)
+                                        : candidate;
+        }
+      }
+    }
+    throw std::runtime_error("failed to compute last occurrence of " +
+                             trans_type.category);
   }
 
-  Date from_date = now;
-  Date to_date = now.add_days(-max_days_ago);
+  int max_days_ago = 365;
+  if (repetition.kind() == RepetitionKind::ExplicitWeekday) {
+    max_days_ago = 1 + repetition.repeater() * 7;
+  } else if (repetition.kind() == RepetitionKind::CountPerWeek) {
+    max_days_ago = 14;
+  }
 
   std::vector<Date> dates;
   for (int i = 0; i <= max_days_ago; ++i) {
-    Date date = from_date.add_days(-i);
-    std::string value = repetition.field() == "%d"
-                            ? date.to_mm_dd_yyyy().substr(3, 2)
-                            : date.weekday_name();
-    auto vals = repetition.values();
-    if (std::find(vals.begin(), vals.end(), value) != vals.end()) {
+    Date date = now.add_days(-i);
+    if (date_matches_repetition(repetition, date)) {
       dates.push_back(date);
     }
   }
@@ -201,30 +294,30 @@ std::vector<Date> build_date_list(const std::string& repetition,
                                   int day_span) {
   Repetition repeat(repetition);
 
-  int days_ago = now.days_since_epoch() - from_date.days_since_epoch();
-  int days = day_span + days_ago;
-
   Date to_date = now.add_days(day_span + 1);
   if (to_date < from_date) {
     throw std::runtime_error("to_date precedes from_date");
   }
 
   std::vector<Date> dates;
-  dates.reserve(static_cast<size_t>(std::max(0, days)));
+  dates.reserve(static_cast<size_t>(
+      std::max(0, to_date.days_since_epoch() - from_date.days_since_epoch())));
 
   int occurrence_count = 0;
   for (Date date = from_date.add_days(1); date <= to_date;
        date = date.add_days(1)) {
-    std::string value = repeat.field() == "%d"
-                            ? date.to_mm_dd_yyyy().substr(3, 2)
-                            : date.weekday_name();
-    auto vals = repeat.values();
-    if (std::find(vals.begin(), vals.end(), value) != vals.end()) {
+    if (repeat.kind() == RepetitionKind::ExplicitMonthDays &&
+        !is_active_month_from_anchor(repeat, from_date, date)) {
+      continue;
+    }
+    if (date_matches_repetition(repeat, date)) {
       occurrence_count += 1;
       if (date < now) {
         continue;
       }
-      if (repeat.repeater() == 1 || occurrence_count % repeat.repeater() == 0) {
+      if (repeat.kind() != RepetitionKind::ExplicitWeekday ||
+          repeat.repeater() == 1 ||
+          occurrence_count % repeat.repeater() == 0) {
         dates.push_back(date);
       }
     }

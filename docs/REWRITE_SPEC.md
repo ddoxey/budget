@@ -14,7 +14,7 @@
 
 ## Data Model
 - **Money**: decimal currency values with exact cent precision.
-- **Repetition**: recurrence defined by `when` and `repeater` (e.g., `Tue/2`, `15`, `1/2`).
+- **Repetition**: recurrence defined by explicit dates/weekdays or counted period slots (e.g., `Tue/2`, `15`, `1,15`, `1/2`, `2xWeek+2`, `2xMonth`).
 - **TransactionType**: category, repetition, amount, conditions (regex for description/debit fields).
 - **Exception**: category, date (MM-DD-YYYY), amount.
 - **Profile**: name, description, balance.

@@ -42,7 +42,7 @@ const std::unordered_map<std::string, HelpTopic>& help_topics() {
         "Usage: update transaction <cat> <when>[/<repeat>] <amount> [<desc>] "
         "[<amount>]\n\nDefines a recurring transaction type with optional "
         "regex matchers. Prefix the repetition with '@' to mark it as auto "
-        "(e.g., @1, @Fri/2)."}},
+        "(e.g., @1, @Fri/2, @2xWeek+2, @2xMonth)."}},
       {"update exception",
        {"Create/update exception",
         "Usage: update exception <cat> <mm-dd-yyyy> <amount>\n\nOverrides the "

@@ -42,6 +42,65 @@ int main() {
   }
 
   {
+    Repetition rep("1,15/2");
+    expect(rep.repeater() == 2, "Monthly repetition repeater");
+    expect(rep.field() == "%d", "Monthly repetition field day-of-month");
+    expect(rep.values().size() == 2 && rep.values()[0] == "01" &&
+               rep.values()[1] == "15",
+           "Monthly repetition values");
+    expect(rep.monthly_factor() == 1.0,
+           "Monthly factor accounts for multiple days and repeater");
+  }
+
+  {
+    Repetition rep("2xWeek");
+    auto positions = rep.positions_in_week();
+    expect(rep.kind() == budget::RepetitionKind::CountPerWeek,
+           "Count weekly repetition kind");
+    expect(positions.size() == 2 && positions[0] == 0 && positions[1] == 4,
+           "Count weekly positions default to Sun/Thu");
+    expect(rep.monthly_factor() == 8.0,
+           "Count weekly monthly factor scales by count");
+    expect(rep.to_string() == "Twice a week",
+           "Count weekly display text");
+  }
+
+  {
+    Repetition rep("2xWeek+2");
+    auto positions = rep.positions_in_week();
+    expect(positions.size() == 2 && positions[0] == 2 && positions[1] == 6,
+           "Count weekly offset rotates positions");
+    expect(rep.to_string() == "Twice a week (starting on Tue)",
+           "Count weekly offset display text");
+  }
+
+  {
+    Repetition rep("2xMonth");
+    auto positions = rep.positions_in_month(30);
+    expect(rep.kind() == budget::RepetitionKind::CountPerMonth,
+           "Count monthly repetition kind");
+    expect(positions.size() == 2 && positions[0] == 1 && positions[1] == 15,
+           "Count monthly positions anchor from first day");
+    expect(rep.monthly_factor() == 2.0,
+           "Count monthly monthly factor matches count");
+  }
+
+  {
+    Repetition rep("2xMonth+2");
+    auto positions = rep.positions_in_month(30);
+    expect(positions.size() == 2 && positions[0] == 3 && positions[1] == 17,
+           "Count monthly offset shifts positions");
+    expect(rep.to_string() == "Twice a month (starting on 3rd)",
+           "Count monthly offset display text");
+  }
+
+  {
+    Repetition rep("2xMonth+1");
+    expect(rep.to_string() == "Twice a month (starting on 2nd)",
+           "Count monthly offset display matches requested wording");
+  }
+
+  {
     TransactionType payday{"Payday", "Fri", 100.0, "", ""};
     Date now{2026, 2, 7};  // Saturday
     Budget budget(0.0, {payday}, {}, {}, 14, 0, now);
@@ -52,6 +111,99 @@ int main() {
              "First Friday event date");
       expect(events[1].get_date().to_mm_dd_yyyy() == "02-20-2026",
              "Second Friday event date");
+    }
+  }
+
+  {
+    TransactionType semimonthly{"Semimonthly", "1,15", 100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Semimonthly";
+    history_tx.fields["transaction_date"] = "02/01/2026";
+    Date now{2026, 2, 7};
+    Budget budget(0.0, {semimonthly}, {}, {history_tx}, 40, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 3, "Semimonthly event count");
+    if (events.size() == 3) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-15-2026",
+             "Semimonthly second February date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "03-01-2026",
+             "Semimonthly first March date");
+      expect(events[2].get_date().to_mm_dd_yyyy() == "03-15-2026",
+             "Semimonthly second March date");
+    }
+  }
+
+  {
+    TransactionType semimonthly{"BimonthlySemi", "1,15/2", 100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "BimonthlySemi";
+    history_tx.fields["transaction_date"] = "01/01/2026";
+    Date now{2026, 1, 2};
+    Budget budget(0.0, {semimonthly}, {}, {history_tx}, 80, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 3, "Bimonthly semimonthly event count");
+    if (events.size() == 3) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "01-15-2026",
+             "Bimonthly semimonthly keeps same-month second date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "03-01-2026",
+             "Bimonthly semimonthly skips February first date");
+      expect(events[2].get_date().to_mm_dd_yyyy() == "03-15-2026",
+             "Bimonthly semimonthly skips February second date");
+    }
+  }
+
+  {
+    TransactionType counted{"CountWeek", "2xWeek", 25.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "CountWeek";
+    history_tx.fields["transaction_date"] = "02/05/2026";
+    Date now{2026, 2, 7};
+    Budget budget(0.0, {counted}, {}, {history_tx}, 10, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 3, "Count weekly event count");
+    if (events.size() == 3) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-08-2026",
+             "Count weekly first date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-12-2026",
+             "Count weekly second date");
+      expect(events[2].get_date().to_mm_dd_yyyy() == "02-15-2026",
+             "Count weekly third date");
+    }
+  }
+
+  {
+    TransactionType counted{"CountWeekOffset", "2xWeek+2", 25.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "CountWeekOffset";
+    history_tx.fields["transaction_date"] = "02/07/2026";
+    Date now{2026, 2, 8};
+    Budget budget(0.0, {counted}, {}, {history_tx}, 7, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 2, "Count weekly offset event count");
+    if (events.size() == 2) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-10-2026",
+             "Count weekly offset first date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "02-14-2026",
+             "Count weekly offset second date");
+    }
+  }
+
+  {
+    TransactionType counted{"CountMonth", "2xMonth+2", 50.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "CountMonth";
+    history_tx.fields["transaction_date"] = "04/03/2026";
+    Date now{2026, 4, 4};
+    Budget budget(0.0, {counted}, {}, {history_tx}, 50, 0, now);
+    auto events = budget.events();
+    expect(events.size() == 3, "Count monthly offset event count");
+    if (events.size() == 3) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "04-17-2026",
+             "Count monthly offset second April date");
+      expect(events[1].get_date().to_mm_dd_yyyy() == "05-03-2026",
+             "Count monthly offset first May date");
+      expect(events[2].get_date().to_mm_dd_yyyy() == "05-18-2026",
+             "Count monthly offset second May date");
     }
   }
 
