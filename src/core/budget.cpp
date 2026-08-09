@@ -217,14 +217,8 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
   LastsResult result;
 
   for (const auto& transaction : history) {
-    if (result.last_for.size() == transaction_types.size()) {
-      break;
-    }
     auto category = categorize_transaction(transaction, transaction_types);
     if (!category.has_value()) {
-      continue;
-    }
-    if (result.last_for.find(*category) != result.last_for.end()) {
       continue;
     }
     auto it = transaction.fields.find("transaction_date");
@@ -233,6 +227,10 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
     }
     auto parsed = Date::parse_mm_dd_yyyy_slash(it->second);
     if (!parsed.has_value()) {
+      continue;
+    }
+    auto existing = result.last_for.find(*category);
+    if (existing != result.last_for.end() && existing->second >= *parsed) {
       continue;
     }
     result.last_for[*category] = *parsed;

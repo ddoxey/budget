@@ -15,5 +15,7 @@ struct HistoryData {
 
 HistoryData read_transaction_history(const std::string& path,
                                      const std::string& header_map_path);
+HistoryData read_transaction_histories(const std::vector<std::string>& paths,
+                                       const std::string& header_map_path);
 
 }  // namespace budget::io

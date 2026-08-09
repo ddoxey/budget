@@ -23,10 +23,15 @@ The CLI looks for `budget.json` in the current directory or your home
 directory to configure paths. The status table reports the active config,
 download, and cache directories.
 
-For file entries such as the latest CSV and header map, `status` also shows
-the file's last modification timestamp:
+For file entries such as the two latest CSVs and header map, `status` also
+shows each file's last modification timestamp:
 
 - `transactions-3.csv (03-21-2025 15:18)`
+
+The two most recently modified CSV files in the download directory are merged
+for history matching. This allows last occurrences to be sourced from separate
+bank-account and credit-card exports. `BUDGET_CSV` remains an explicit
+single-file override.
 
 Header mapping is stored as plain JSON and can be edited interactively:
 

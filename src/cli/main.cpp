@@ -930,7 +930,7 @@ int main() {
       auto exceptions = cache.read_exceptions();
       auto types = cache.read_transaction_types();
       auto themes = cache.read_themes();
-      auto csv = budget::io::latest_csv_path();
+      auto csv_paths = budget::io::latest_csv_paths();
       std::string cfg_dir = budget::io::config_dir();
       std::string dl_dir = budget::io::download_dir();
       std::string cache_dir = cache.cache_dir();
@@ -965,11 +965,15 @@ int main() {
       table.row({"Config Dir", cfg_dir.empty() ? "None" : cfg_dir});
       table.set_theme(alternating_row_theme(row_i++));
       table.row({"Download Dir", dl_dir.empty() ? "None" : dl_dir});
-      std::string csv_name =
-          csv.has_value() ? format_status_file_value(*csv) : "None";
       std::string map_name = format_status_file_value(map_path);
       table.set_theme(alternating_row_theme(row_i++));
-      table.row({"CSV File", csv_name});
+      table.row({"CSV File 1", csv_paths.empty()
+                                     ? "None"
+                                     : format_status_file_value(csv_paths[0])});
+      table.set_theme(alternating_row_theme(row_i++));
+      table.row({"CSV File 2", csv_paths.size() < 2
+                                     ? "None"
+                                     : format_status_file_value(csv_paths[1])});
       table.set_theme(alternating_row_theme(row_i++));
       table.row({"Header Map File", map_name});
       table.close();
@@ -1003,8 +1007,8 @@ int main() {
         }
       }
 
-      auto csv_path = budget::io::latest_csv_path();
-      if (!csv_path.has_value()) {
+      auto csv_paths = budget::io::latest_csv_paths();
+      if (csv_paths.empty()) {
         std::cerr
             << "No CSV found. Set BUDGET_CSV or place a .csv in ~/Downloads."
             << std::endl;
@@ -1028,7 +1032,7 @@ int main() {
 
       try {
         auto history =
-            budget::io::read_transaction_history(*csv_path, map_path);
+            budget::io::read_transaction_histories(csv_paths, map_path);
         auto filtered =
             budget::filter_exceptions(exceptions, budget::today_est());
         budget::Budget budget_model(balance, transaction_types, filtered,
@@ -1196,11 +1200,11 @@ int main() {
       auto filtered = budget::filter_exceptions(exceptions, budget::today_est());
 
       std::vector<budget::Transaction> history;
-      auto csv_path = budget::io::latest_csv_path();
-      if (csv_path.has_value()) {
+      auto csv_paths = budget::io::latest_csv_paths();
+      if (!csv_paths.empty()) {
         try {
           auto history_data =
-              budget::io::read_transaction_history(*csv_path, map_path);
+              budget::io::read_transaction_histories(csv_paths, map_path);
           history = history_data.transactions;
         } catch (const std::exception& ex) {
           std::cerr << "totals error: " << ex.what() << std::endl;
@@ -1274,12 +1278,14 @@ int main() {
       cache.write_exceptions(filtered);
 
       std::vector<budget::Transaction> history;
-      auto csv_path = budget::io::latest_csv_path();
-      if (csv_path.has_value()) {
-        std::cout << "Reading CSV: " << *csv_path << std::endl;
+      auto csv_paths = budget::io::latest_csv_paths();
+      if (!csv_paths.empty()) {
         try {
+          for (const auto& csv_path : csv_paths) {
+            std::cout << "Reading CSV: " << csv_path << std::endl;
+          }
           auto history_data =
-              budget::io::read_transaction_history(*csv_path, map_path);
+              budget::io::read_transaction_histories(csv_paths, map_path);
           history = history_data.transactions;
         } catch (const std::exception& ex) {
           std::cerr << "reload error: " << ex.what() << std::endl;
@@ -1377,11 +1383,11 @@ int main() {
       }
       auto lasts = cache.read_lasts();
       auto sources = cache.read_last_sources();
-      auto csv_path = budget::io::latest_csv_path();
-      if (csv_path.has_value()) {
+      auto csv_paths = budget::io::latest_csv_paths();
+      if (!csv_paths.empty()) {
         try {
           auto history =
-              budget::io::read_transaction_history(*csv_path, map_path);
+              budget::io::read_transaction_histories(csv_paths, map_path);
           auto exceptions = cache.read_exceptions();
           auto filtered =
               budget::filter_exceptions(exceptions, budget::today_est());

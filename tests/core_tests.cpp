@@ -17,6 +17,7 @@ using budget::Repetition;
 using budget::Transaction;
 using budget::TransactionType;
 using budget::io::read_transaction_history;
+using budget::io::read_transaction_histories;
 
 static int failures = 0;
 
@@ -368,6 +369,43 @@ int main() {
              "Header mapping includes debit");
     }
     std::filesystem::remove(csv_path);
+    std::filesystem::remove(map_path);
+  }
+
+  {
+    auto temp_dir = std::filesystem::temp_directory_path();
+    auto recent_path = temp_dir / "budget_recent_history.csv";
+    auto older_path = temp_dir / "budget_older_history.csv";
+    auto map_path = temp_dir / "budget_multi_header_map.json";
+    write_text_file(recent_path.string(),
+                    "Transaction Date,Amount,Description\n"
+                    "02/06/2026,100.00,Employer Payroll\n");
+    write_text_file(older_path.string(),
+                    "Transaction Date,Amount,Description\n"
+                    "02/05/2026,-75.00,Credit Card Payment\n"
+                    "02/07/2026,100.00,Employer Payroll\n");
+    std::filesystem::remove(map_path);
+
+    auto history = read_transaction_histories(
+        {recent_path.string(), older_path.string()}, map_path.string());
+    expect(history.transactions.size() == 3,
+           "Transactions from two history files are merged");
+
+    TransactionType payroll{"Payroll", "Fri", 100.0,
+                            "Employer Payroll", ""};
+    TransactionType card{"Card", "Thu", -75.0,
+                         "Credit Card Payment", ""};
+    Budget budget(0.0, {payroll, card}, {}, history.transactions, 7, 0,
+                  Date{2026, 2, 7});
+    auto lasts = budget.last_occurrence_details();
+    expect(lasts.count("Payroll") == 1 &&
+               lasts["Payroll"].date == "02-07-2026",
+           "Latest matching date is selected across both files");
+    expect(lasts.count("Card") == 1 && lasts["Card"].date == "02-05-2026",
+           "Second history file supplies a last occurrence");
+
+    std::filesystem::remove(recent_path);
+    std::filesystem::remove(older_path);
     std::filesystem::remove(map_path);
   }
 
