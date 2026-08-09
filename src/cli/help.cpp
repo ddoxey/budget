@@ -2,6 +2,18 @@
 
 namespace budget::cli {
 
+const std::string& repetition_syntax_help() {
+  static const std::string help =
+      "Supported repetition patterns:\n"
+      "  Weekday:       Fri, Tue/2\n"
+      "  Day of month:  1, 1,15, 1/2, 1,15/2\n"
+      "  Counted:       2xWeek, 2xWeek+2, 2xMonth, 2xMonth+1\n"
+      "  Annual date:   Jun-24\n"
+      "Prefix any pattern with @ to move weekend and US federal-holiday "
+      "occurrences to the prior business day (for example, @Jun-24).";
+  return help;
+}
+
 const std::unordered_map<std::string, HelpTopic>& help_topics() {
   static const std::unordered_map<std::string, HelpTopic> topics = {
       {"headers",
@@ -41,8 +53,7 @@ const std::unordered_map<std::string, HelpTopic>& help_topics() {
        {"Create/update transaction",
         "Usage: update transaction <cat> <when>[/<repeat>] <amount> [<desc>] "
         "[<amount>]\n\nDefines a recurring transaction type with optional "
-        "regex matchers. Prefix the repetition with '@' to mark it as auto "
-        "(e.g., @1, @Fri/2, @2xWeek+2, @2xMonth)."}},
+        "regex matchers.\n\n" + repetition_syntax_help()}},
       {"update exception",
        {"Create/update exception",
         "Usage: update exception <cat> <mm-dd-yyyy> <amount>\n\nOverrides the "

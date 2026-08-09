@@ -1616,6 +1616,7 @@ int main() {
       std::string repetition = tokens[1];
       if (!budget::Repetition::parse(repetition).has_value()) {
         std::cerr << "Invalid repetition pattern: " << repetition << std::endl;
+        std::cerr << budget::cli::repetition_syntax_help() << std::endl;
         continue;
       }
       auto amount = budget::Money::parse(tokens[2]);

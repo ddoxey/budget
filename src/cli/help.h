@@ -11,5 +11,6 @@ struct HelpTopic {
 };
 
 const std::unordered_map<std::string, HelpTopic>& help_topics();
+const std::string& repetition_syntax_help();
 
 }  // namespace budget::cli

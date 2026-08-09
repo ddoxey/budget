@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "../src/cli/completion.h"
+#include "../src/cli/help.h"
 
 static int failures = 0;
 
@@ -42,6 +43,19 @@ int main() {
   {
     auto matches = budget::cli::completion_candidates("themes show d", 13);
     expect(contains(matches, "default"), "Complete themes show default token");
+  }
+  {
+    const auto& help = budget::cli::repetition_syntax_help();
+    expect(help.find("Fri, Tue/2") != std::string::npos,
+           "Repetition help includes weekday patterns");
+    expect(help.find("1,15/2") != std::string::npos,
+           "Repetition help includes monthly patterns");
+    expect(help.find("2xWeek+2") != std::string::npos,
+           "Repetition help includes counted patterns");
+    expect(help.find("Jun-24") != std::string::npos,
+           "Repetition help includes annual patterns");
+    expect(help.find("Prefix any pattern with @") != std::string::npos,
+           "Repetition help explains automatic business-day adjustment");
   }
 
   if (failures > 0) {
