@@ -90,6 +90,7 @@ update transaction Mortgage 1,15 -1200
 update transaction Spending 2xWeek+2 -60
 update transaction Utilities 2xMonth -150
 update transaction Gym Tue/4 -40 r'.*Planet Fitness.*'
+update transaction Registration Jun-24 -120
 ```
 
 Supported repetition forms:
@@ -100,6 +101,8 @@ Supported repetition forms:
   `1`, `1,15`, `1/2`, `1,15/2`
 - Evenly distributed counted schedule:
   `2xWeek`, `2xWeek+2`, `2xMonth`, `2xMonth+1`
+- Annual calendar date:
+  `Jun-24`, `@Jun-24`
 
 For monthly schedules, comma-separated days mean exact dates within each active
 month. For example, `1,15` schedules the transaction on the 1st and 15th.
@@ -126,6 +129,8 @@ update transaction PAYDAY @Fri 1500
 ```
 
 Non-auto events always occur on the scheduled date.
+
+Annual month names are case-insensitive. `Feb-29` occurs only in leap years.
 
 ## Exceptions
 

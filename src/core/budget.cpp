@@ -36,6 +36,10 @@ int days_in_month(int year, int month) {
 }
 
 bool date_matches_repetition(const Repetition& repetition, const Date& date) {
+  if (repetition.kind() == RepetitionKind::ExplicitAnnualDate) {
+    return date.month == repetition.annual_month() &&
+           date.day == repetition.annual_day();
+  }
   if (repetition.kind() == RepetitionKind::CountPerWeek) {
     auto positions = repetition.positions_in_week();
     return std::find(positions.begin(), positions.end(),
@@ -125,6 +129,23 @@ std::optional<std::string> categorize_transaction(
 
 Date compute_last(const TransactionType& trans_type, const Date& now) {
   Repetition repetition(trans_type.repetition);
+  if (repetition.kind() == RepetitionKind::ExplicitAnnualDate) {
+    for (int year = now.year; year >= now.year - 8; --year) {
+      if (repetition.annual_day() >
+          days_in_month(year, repetition.annual_month())) {
+        continue;
+      }
+      Date scheduled{year, repetition.annual_month(), repetition.annual_day()};
+      Date occurrence = repetition.auto_flag()
+                            ? adjust_to_business_day(scheduled)
+                            : scheduled;
+      if (occurrence <= now) {
+        return occurrence;
+      }
+    }
+    throw std::runtime_error("failed to compute last occurrence of " +
+                             trans_type.category);
+  }
   if (repetition.kind() == RepetitionKind::ExplicitMonthDays ||
       repetition.kind() == RepetitionKind::CountPerMonth) {
     for (int month_delta = 0; month_delta <= repetition.repeater() + 12;

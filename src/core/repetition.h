@@ -12,6 +12,7 @@ namespace budget {
 enum class RepetitionKind {
   ExplicitWeekday,
   ExplicitMonthDays,
+  ExplicitAnnualDate,
   CountPerWeek,
   CountPerMonth,
 };
@@ -23,6 +24,8 @@ struct RepetitionParse {
   RepetitionKind kind = RepetitionKind::ExplicitWeekday;
   int count = 0;
   int offset = 0;
+  int annual_month = 0;
+  int annual_day = 0;
 };
 
 class Repetition {
@@ -33,6 +36,9 @@ class Repetition {
         std::regex_constants::icase);
     static const std::regex counted_re(
         R"(^@?([0-9]+)x(Week|Month)(\+([0-9]+))?$)",
+        std::regex_constants::icase);
+    static const std::regex annual_re(
+        R"(^@?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-([0-9]{1,2})$)",
         std::regex_constants::icase);
     std::smatch m;
     RepetitionParse out;
@@ -54,6 +60,36 @@ class Repetition {
            (out.count < 1 || out.count > 31))) {
         return std::nullopt;
       }
+      return out;
+    }
+
+    if (std::regex_match(text, m, annual_re)) {
+      static const std::vector<std::string> months = {
+          "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+      std::string month = m[1].str();
+      month[0] = static_cast<char>(
+          std::toupper(static_cast<unsigned char>(month[0])));
+      for (size_t i = 1; i < month.size(); ++i) {
+        month[i] = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(month[i])));
+      }
+      auto month_it = std::find(months.begin(), months.end(), month);
+      int day = std::stoi(m[2].str());
+      static const int max_days[] = {31, 29, 31, 30, 31, 30,
+                                     31, 31, 30, 31, 30, 31};
+      if (month_it == months.end()) {
+        return std::nullopt;
+      }
+      int month_number =
+          static_cast<int>(std::distance(months.begin(), month_it)) + 1;
+      if (day < 1 || day > max_days[month_number - 1]) {
+        return std::nullopt;
+      }
+      out.kind = RepetitionKind::ExplicitAnnualDate;
+      out.annual_month = month_number;
+      out.annual_day = day;
+      out.when = month + "-" + std::to_string(day);
       return out;
     }
 
@@ -108,6 +144,8 @@ class Repetition {
     kind_ = parsed->kind;
     count_ = parsed->count;
     offset_ = parsed->offset;
+    annual_month_ = parsed->annual_month;
+    annual_day_ = parsed->annual_day;
   }
 
   const std::string& when() const { return when_; }
@@ -116,6 +154,8 @@ class Repetition {
   RepetitionKind kind() const { return kind_; }
   int count() const { return count_; }
   int offset() const { return offset_; }
+  int annual_month() const { return annual_month_; }
+  int annual_day() const { return annual_day_; }
   bool is_count_pattern() const {
     return kind_ == RepetitionKind::CountPerWeek ||
            kind_ == RepetitionKind::CountPerMonth;
@@ -196,6 +236,9 @@ class Repetition {
   }
 
   double monthly_factor() const {
+    if (kind_ == RepetitionKind::ExplicitAnnualDate) {
+      return 1.0 / 12.0;
+    }
     if (kind_ == RepetitionKind::CountPerWeek) {
       return 4.0 * count_;
     }
@@ -271,6 +314,11 @@ class Repetition {
       return result;
     }
 
+    if (kind_ == RepetitionKind::ExplicitAnnualDate) {
+      return "annually on " + when_.substr(0, 3) + " " +
+             ordinal(annual_day_);
+    }
+
     if (!when_.empty() && std::isdigit(static_cast<unsigned char>(when_[0]))) {
       auto vals = values();
       std::string when;
@@ -300,6 +348,8 @@ class Repetition {
   RepetitionKind kind_ = RepetitionKind::ExplicitWeekday;
   int count_ = 0;
   int offset_ = 0;
+  int annual_month_ = 0;
+  int annual_day_ = 0;
 };
 
 }  // namespace budget

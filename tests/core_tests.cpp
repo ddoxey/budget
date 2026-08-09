@@ -109,6 +109,70 @@ int main() {
   }
 
   {
+    Repetition rep("@jun-24");
+    expect(rep.kind() == budget::RepetitionKind::ExplicitAnnualDate,
+           "Annual date repetition kind");
+    expect(rep.annual_month() == 6 && rep.annual_day() == 24,
+           "Annual date month and day");
+    expect(rep.auto_flag(), "Annual date supports auto adjustment");
+    expect(rep.monthly_factor() == 1.0 / 12.0,
+           "Annual date monthly factor");
+    expect(rep.to_string() == "annually on Jun 24th",
+           "Annual date display text");
+    expect(!Repetition::parse("Apr-31").has_value(),
+           "Impossible annual date is rejected");
+    expect(Repetition::parse("Feb-29").has_value(),
+           "Leap-day annual date is accepted");
+  }
+
+  {
+    TransactionType annual{"Annual", "Jun-24", -100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Annual";
+    history_tx.fields["transaction_date"] = "06/24/2025";
+    Budget budget(0.0, {annual}, {}, {history_tx}, 200, 0,
+                  Date{2026, 1, 1});
+    auto events = budget.events();
+    expect(events.size() == 1, "Annual date produces one yearly event");
+    if (events.size() == 1) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "06-24-2026",
+             "Annual date is pinned to its calendar month and day");
+    }
+  }
+
+  {
+    TransactionType annual{"AnnualAuto", "@Jun-24", -100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "AnnualAuto";
+    history_tx.fields["transaction_date"] = "06/24/2027";
+    Budget budget(0.0, {annual}, {}, {history_tx}, 200, 0,
+                  Date{2028, 1, 1});
+    auto events = budget.events();
+    expect(events.size() == 1,
+           "Auto annual date produces one yearly event");
+    if (events.size() == 1) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "06-23-2028",
+             "Auto annual weekend date shifts to prior business day");
+    }
+  }
+
+  {
+    TransactionType leap_day{"LeapDay", "Feb-29", -100.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "LeapDay";
+    history_tx.fields["transaction_date"] = "02/29/2024";
+    Budget budget(0.0, {leap_day}, {}, {history_tx}, 1500, 0,
+                  Date{2024, 3, 1});
+    auto events = budget.events();
+    expect(events.size() == 1,
+           "Leap-day annual recurrence skips non-leap years");
+    if (events.size() == 1) {
+      expect(events[0].get_date().to_mm_dd_yyyy() == "02-29-2028",
+             "Leap-day annual recurrence reaches next leap year");
+    }
+  }
+
+  {
     TransactionType payday{"Payday", "Fri", 100.0, "", ""};
     Date now{2026, 2, 7};  // Saturday
     Budget budget(0.0, {payday}, {}, {}, 14, 0, now);
