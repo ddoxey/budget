@@ -220,8 +220,69 @@ Date compute_last(const TransactionType& trans_type, const Date& now) {
 
 struct LastsResult {
   std::unordered_map<std::string, Date> last_for;
+  std::unordered_map<std::string, Date> observed_for;
+  std::unordered_map<std::string, Date> schedule_anchor_for;
   std::unordered_map<std::string, std::string> source_for;
 };
+
+Date scheduled_date_from_occurrence(const Repetition& repetition,
+                                    const Date& occurrence) {
+  if (!repetition.auto_flag()) {
+    return occurrence;
+  }
+  for (int offset = 0; offset <= 7; ++offset) {
+    Date candidate = occurrence.add_days(offset);
+    if (date_matches_repetition(repetition, candidate) &&
+        adjust_to_business_day(candidate) == occurrence) {
+      return candidate;
+    }
+  }
+  return occurrence;
+}
+
+int early_payment_grace_days(const Repetition& repetition,
+                             const Date& occurrence) {
+  Date scheduled = scheduled_date_from_occurrence(repetition, occurrence);
+  int weekday_matches = 0;
+  for (int days_ago = 1; days_ago <= 2000; ++days_ago) {
+    Date candidate = scheduled.add_days(-days_ago);
+    if (!date_matches_repetition(repetition, candidate)) {
+      continue;
+    }
+    if (repetition.kind() == RepetitionKind::ExplicitMonthDays) {
+      int month_delta = month_index(scheduled) - month_index(candidate);
+      if (month_delta % repetition.repeater() != 0) {
+        continue;
+      }
+    }
+    if (repetition.kind() == RepetitionKind::ExplicitWeekday) {
+      ++weekday_matches;
+      if (weekday_matches % repetition.repeater() != 0) {
+        continue;
+      }
+    }
+    int interval_days = scheduled.days_since_epoch() -
+                        candidate.days_since_epoch();
+    return std::max(0, interval_days / 2 - 1);
+  }
+  int interval_days = 1;
+  return std::max(0, interval_days / 2 - 1);
+}
+
+std::optional<Date> transaction_posting_date(const Transaction& transaction) {
+  static const char* keys[] = {"posting_date", "posting date"};
+  for (const char* key : keys) {
+    auto it = transaction.fields.find(key);
+    if (it == transaction.fields.end()) {
+      continue;
+    }
+    auto parsed = Date::parse_mm_dd_yyyy_slash(it->second);
+    if (parsed.has_value()) {
+      return parsed;
+    }
+  }
+  return std::nullopt;
+}
 
 bool is_history_source(const std::string& source) {
   return source == "history" || source == "history-overdue";
@@ -255,6 +316,9 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
       continue;
     }
     result.last_for[*category] = *parsed;
+    result.observed_for[*category] =
+        transaction_posting_date(transaction).value_or(*parsed);
+    result.schedule_anchor_for[*category] = *parsed;
     std::string source = "history";
     auto source_it = transaction.fields.find("last_source");
     if (source_it != transaction.fields.end() && !source_it->second.empty()) {
@@ -275,8 +339,19 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
     }
 
     Date scheduled_last = compute_last(type, now);
-    if (last_it->second < scheduled_last) {
+    auto observed_it = result.observed_for.find(type.category);
+    Date observed = observed_it != result.observed_for.end()
+                        ? observed_it->second
+                        : last_it->second;
+    Date earliest_on_time = adjust_to_business_day(scheduled_last);
+    Repetition repetition(type.repetition);
+    Date earliest_acceptable =
+        earliest_on_time.add_days(
+            -early_payment_grace_days(repetition, scheduled_last));
+    if (observed < earliest_acceptable) {
       source_it->second = "history-overdue";
+    } else if (last_it->second < scheduled_last) {
+      result.schedule_anchor_for[type.category] = scheduled_last;
     }
   }
 
@@ -285,6 +360,7 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
       if (result.last_for.find(type.category) == result.last_for.end()) {
         Date computed_last = compute_last(type, now);
         result.last_for[type.category] = computed_last;
+        result.schedule_anchor_for[type.category] = computed_last;
         result.source_for[type.category] =
             (computed_last < now) ? "computed-overdue" : "computed";
       }
@@ -300,6 +376,7 @@ LastsResult find_lasts(const std::vector<Transaction>& history,
            (source_it == result.source_for.end() ||
             source_it->second != "exception"))) {
         result.last_for[exception.category] = exception.date;
+        result.schedule_anchor_for[exception.category] = exception.date;
         result.source_for[exception.category] = "exception";
       }
     }
@@ -503,6 +580,7 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
 
   auto lasts = find_lasts(history, transaction_types_, exceptions, now);
   last_occurrence_of_ = lasts.last_for;
+  schedule_anchor_of_ = lasts.schedule_anchor_for;
   last_source_of_ = lasts.source_for;
 
   for (const auto& type : transaction_types_) {
@@ -538,13 +616,17 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
       continue;
     }
     Repetition repetition(trans_type.repetition);
+    auto anchor_it = schedule_anchor_of_.find(trans_type.category);
+    Date schedule_anchor = anchor_it != schedule_anchor_of_.end()
+                               ? anchor_it->second
+                               : it->second;
     auto source_it = last_source_of_.find(trans_type.category);
     std::string source =
         source_it != last_source_of_.end() ? source_it->second : "";
     bool overdue = is_overdue_source(source);
     if (overdue) {
       double catchup = overdue_catchup_amount(
-          exception_for, trans_type, it->second, now,
+          exception_for, trans_type, schedule_anchor, now,
           source == "computed-overdue");
       if (catchup != 0.0) {
         EventRecord record;
@@ -556,7 +638,8 @@ Budget::Budget(double balance, std::vector<TransactionType> transaction_types,
         event_records.push_back(record);
       }
     }
-    auto dates = build_date_list(trans_type.repetition, now, it->second, days);
+    auto dates =
+        build_date_list(trans_type.repetition, now, schedule_anchor, days);
     for (const auto& date : dates) {
       Date adjusted =
           repetition.auto_flag() ? adjust_to_business_day(date) : date;

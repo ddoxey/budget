@@ -141,6 +141,75 @@ int main() {
   }
 
   {
+    TransactionType annual{"HOA", "Jun-24", -122.13,
+                           "Star Valley", ""};
+    Transaction history_tx;
+    history_tx.fields["description"] = "Star Valley Master HOA";
+    history_tx.fields["transaction_date"] = "06/23/2026";
+    history_tx.fields["posting date"] = "06/24/2026";
+    Budget budget(0.0, {annual}, {}, {history_tx}, 31, 0,
+                  Date{2026, 8, 9});
+    auto lasts = budget.last_occurrence_details();
+    auto events = budget.events();
+    expect(lasts.count("HOA") == 1 &&
+               lasts["HOA"].date == "06-23-2026",
+           "Annual last occurrence retains the transaction date");
+    expect(lasts.count("HOA") == 1 && lasts["HOA"].source == "history",
+           "Posting date satisfies the annual scheduled occurrence");
+    expect(events.empty(),
+           "Satisfied annual occurrence is not caught up as overdue");
+  }
+
+  {
+    TransactionType mortgage{"Mortgage", "1", -1500.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Mortgage";
+    history_tx.fields["transaction_date"] = "07/31/2026";
+    Budget budget(0.0, {mortgage}, {}, {history_tx}, 10, 0,
+                  Date{2026, 8, 9});
+    auto lasts = budget.last_occurrence_details();
+    auto events = budget.events();
+    expect(lasts.count("Mortgage") == 1 &&
+               lasts["Mortgage"].source == "history",
+           "Prior business-day payment satisfies a weekend due date");
+    expect(events.empty(),
+           "Prior business-day payment is not caught up as overdue");
+  }
+
+  {
+    TransactionType utility{"Utility", "10", -200.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Utility";
+    history_tx.fields["transaction_date"] = "07/06/2026";
+    Budget budget(0.0, {utility}, {}, {history_tx}, 31, 0,
+                  Date{2026, 7, 15});
+    auto lasts = budget.last_occurrence_details();
+    auto events = budget.events();
+    expect(lasts.count("Utility") == 1 &&
+               lasts["Utility"].date == "07-06-2026",
+           "Early payment retains its actual history date");
+    expect(lasts.count("Utility") == 1 &&
+               lasts["Utility"].source == "history",
+           "Payment inside the early grace period fulfills the due date");
+    expect(events.size() == 1 &&
+               events[0].get_date().to_mm_dd_yyyy() == "08-10-2026",
+           "Projection continues from the fulfilled scheduled due date");
+  }
+
+  {
+    TransactionType utility{"Utility", "10", -200.0, "", ""};
+    Transaction history_tx;
+    history_tx.fields["cat"] = "Utility";
+    history_tx.fields["transaction_date"] = "06/25/2026";
+    Budget budget(0.0, {utility}, {}, {history_tx}, 10, 0,
+                  Date{2026, 7, 15});
+    auto lasts = budget.last_occurrence_details();
+    expect(lasts.count("Utility") == 1 &&
+               lasts["Utility"].source == "history-overdue",
+           "Payment before the midpoint grace window remains overdue");
+  }
+
+  {
     TransactionType annual{"AnnualAuto", "@Jun-24", -100.0, "", ""};
     Transaction history_tx;
     history_tx.fields["cat"] = "AnnualAuto";

@@ -126,6 +126,7 @@ class Budget {
   std::unordered_map<std::string, double> totals_;
   std::optional<ChokepointList> chokepoints_;
   std::unordered_map<std::string, Date> last_occurrence_of_;
+  std::unordered_map<std::string, Date> schedule_anchor_of_;
   std::unordered_map<std::string, std::string> last_source_of_;
   int days_ = 0;
   double balance_ = 0.0;
