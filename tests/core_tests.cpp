@@ -427,6 +427,8 @@ int main() {
       const auto& fields = history.transactions[0].fields;
       expect(fields.find("transaction_date") != fields.end(),
              "Header mapping includes transaction_date");
+      expect(fields.find("posting_date") != fields.end(),
+             "Header mapping includes posting_date");
       expect(fields.find("description") != fields.end(),
              "Header mapping includes description");
       expect(fields.find("debit") != fields.end(),

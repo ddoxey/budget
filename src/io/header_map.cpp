@@ -78,6 +78,8 @@ std::unordered_map<std::string, std::string> guess_map(
       best_match(headers, normalized,
                  {"transaction date", "trans date", "date", "posted date",
                   "posting date"});
+  result["posting_date"] =
+      best_match(headers, normalized, {"posting date", "posted date"});
   result["description"] = best_match(headers, normalized,
                                      {"description", "details", "memo",
                                       "transaction description", "narrative"});
