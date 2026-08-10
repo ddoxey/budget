@@ -879,6 +879,8 @@ int main() {
         std::cout << "No transaction types configured." << std::endl;
         continue;
       }
+      double monthly_income = 0.0;
+      double monthly_expenses = 0.0;
       double monthly_balance = 0.0;
       bool abbreviated = (line == "trans");
       budget::ui::Table table(abbreviated
@@ -904,7 +906,13 @@ int main() {
         amt.precision(2);
         amt << type.amount;
         budget::Repetition rep(type.repetition);
-        monthly_balance += rep.monthly_factor() * type.amount;
+        double monthly_amount = rep.monthly_factor() * type.amount;
+        monthly_balance += monthly_amount;
+        if (monthly_amount >= 0.0) {
+          monthly_income += monthly_amount;
+        } else {
+          monthly_expenses += monthly_amount;
+        }
         if (abbreviated) {
           table.row({type.category, rep.to_string(), amt.str()});
         } else {
@@ -914,13 +922,21 @@ int main() {
       }
       table.close();
       std::cout << table.str();
-      std::ostringstream balance_text;
-      balance_text.setf(std::ios::fixed);
-      balance_text.precision(2);
-      balance_text << active_profile << " Monthly Balance: " << monthly_balance;
-      budget::ui::Table banner({-1});
-      banner.banner(balance_text.str());
-      std::cout << banner.str();
+      auto format_monthly = [](double amount) {
+        std::ostringstream out;
+        out.setf(std::ios::fixed);
+        out.precision(2);
+        out << amount;
+        return out.str();
+      };
+      budget::ui::Table summary({20, 15});
+      summary.header({}, active_profile + " Monthly Cash Flow");
+      summary.row({"Recurring Income", format_monthly(monthly_income)});
+      summary.row({"Recurring Expenses", format_monthly(monthly_expenses)});
+      summary.boundary(true);
+      summary.row({"Net Balance", format_monthly(monthly_balance)});
+      summary.close();
+      std::cout << summary.str();
       continue;
     }
 
