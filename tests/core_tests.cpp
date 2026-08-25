@@ -10,7 +10,10 @@
 #include "../src/io/history_reader.h"
 
 using budget::Budget;
+using budget::ChokepointList;
 using budget::Date;
+using budget::Event;
+using budget::EventRecord;
 using budget::Exception;
 using budget::Money;
 using budget::Repetition;
@@ -33,7 +36,61 @@ void write_text_file(const std::string& path, const std::string& contents) {
   out << contents;
 }
 
+std::vector<Event> make_events(const std::vector<double>& amounts) {
+  std::vector<Event> events;
+  double balance = 0.0;
+  Date date{2026, 1, 1};
+  for (size_t i = 0; i < amounts.size(); ++i) {
+    Date event_date = date.add_days(static_cast<int>(i));
+    EventRecord record{"Test", amounts[i], event_date,
+                       event_date.to_yyyymmdd(),
+                       event_date.epoch_seconds_est_midnight()};
+    events.emplace_back(record, balance);
+  }
+  return events;
+}
+
 int main() {
+  {
+    auto events = make_events({-10.0, 30.0, -15.0, 20.0, -30.0});
+    ChokepointList chokepoints(events);
+    const auto& points = chokepoints.chokepoints();
+    expect(points.size() == 3,
+           "Chokepoints include first, interior, and last local minima");
+    if (points.size() == 3) {
+      expect(points[0].date().to_mm_dd_yyyy() == "01-01-2026",
+             "First datapoint can be a chokepoint");
+      expect(points[1].date().to_mm_dd_yyyy() == "01-03-2026",
+             "Interior local minimum is a chokepoint");
+      expect(points[2].date().to_mm_dd_yyyy() == "01-05-2026",
+             "Last datapoint can be a chokepoint");
+    }
+    expect(chokepoints.minimum().has_value() &&
+               chokepoints.minimum()->balance() == -10.0,
+           "Eye of the needle is the lowest chokepoint");
+  }
+
+  {
+    auto events = make_events({25.0});
+    ChokepointList chokepoints(events);
+    expect(chokepoints.chokepoints().size() == 1,
+           "Single datapoint is a chokepoint");
+  }
+
+  {
+    auto events = make_events({10.0, -10.0, 0.0, 10.0});
+    ChokepointList chokepoints(events);
+    expect(chokepoints.chokepoints().size() == 2,
+           "Both edges of a minimum plateau are retained");
+  }
+
+  {
+    auto events = make_events({0.0, 0.0, 0.0});
+    ChokepointList chokepoints(events);
+    expect(chokepoints.chokepoints().empty(),
+           "A flat series has no chokepoints");
+  }
+
   {
     auto parsed = Money::parse("$1,234.50");
     expect(parsed.has_value() && *parsed == 1234.50, "Money parse with commas");

@@ -84,8 +84,7 @@ class Chokepoint {
 
 class ChokepointList {
  public:
-  ChokepointList(const std::vector<TransactionType>& transaction_types,
-                 const std::vector<Event>& events);
+  explicit ChokepointList(const std::vector<Event>& events);
 
   const std::vector<Chokepoint>& chokepoints() const { return chokepoints_; }
   const std::optional<Chokepoint>& minimum() const { return minimum_; }

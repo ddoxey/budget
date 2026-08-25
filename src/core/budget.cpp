@@ -482,54 +482,33 @@ Chokepoint::Chokepoint(const Event& event)
       balance_(event.get_balance()),
       timestamp_(event.get_epoch()) {}
 
-ChokepointList::ChokepointList(
-    const std::vector<TransactionType>& transaction_types,
-    const std::vector<Event>& events) {
-  double major_expense = 0.0;
-  double major_income = 0.0;
-  std::string major_expense_cat;
-  std::string major_income_cat;
-  int major_expense_count = 0;
-
-  for (const auto& trans : transaction_types) {
-    if (trans.amount < major_expense) {
-      major_expense = trans.amount;
-      major_expense_cat = trans.category;
-    } else if (trans.amount > major_income) {
-      major_income = trans.amount;
-      major_income_cat = trans.category;
-    }
-  }
-
-  double minimum_balance = 999999.0;
-  std::optional<Event> minimum_event;
-
+ChokepointList::ChokepointList(const std::vector<Event>& events) {
   for (size_t i = 0; i < events.size(); ++i) {
     const auto& event = events[i];
-    if (event.get_amount() == major_expense) {
-      major_expense_count += 1;
-    } else if (event.get_amount() == major_income) {
-      if (major_expense_count > 0 && i > 0) {
-        const auto& last_event = events[i - 1];
-        if (minimum_balance > 0 && minimum_balance > last_event.get_balance()) {
-          minimum_balance = last_event.get_balance();
-          minimum_event = last_event;
-        }
-        chokepoints_.emplace_back(last_event);
-        datapoints_.push_back({static_cast<double>(last_event.get_epoch()),
-                               last_event.get_balance()});
-      }
-      major_expense_count = 0;
+    const double balance = event.get_balance();
+    const bool lower_than_previous =
+        i == 0 || balance <= events[i - 1].get_balance();
+    const bool lower_than_next =
+        i + 1 == events.size() || balance <= events[i + 1].get_balance();
+    const bool strictly_lower =
+        events.size() == 1 ||
+        (i > 0 && balance < events[i - 1].get_balance()) ||
+        (i + 1 < events.size() && balance < events[i + 1].get_balance());
+
+    if (lower_than_previous && lower_than_next && strictly_lower) {
+      chokepoints_.emplace_back(event);
+      datapoints_.push_back(
+          {static_cast<double>(event.get_epoch()), balance});
     }
   }
 
-  if (!events.empty() && minimum_balance > events[0].get_balance()) {
-    minimum_balance = events[0].get_balance();
-    minimum_event = events[0];
-  }
-
-  if (minimum_event.has_value()) {
-    minimum_ = Chokepoint(*minimum_event);
+  if (!chokepoints_.empty()) {
+    auto minimum = std::min_element(
+        chokepoints_.begin(), chokepoints_.end(),
+        [](const Chokepoint& lhs, const Chokepoint& rhs) {
+          return lhs.balance() < rhs.balance();
+        });
+    minimum_ = *minimum;
   }
 }
 
@@ -692,7 +671,7 @@ std::unordered_map<std::string, double> Budget::totals() {
 
 ChokepointList Budget::chokepoints() {
   if (!chokepoints_.has_value()) {
-    chokepoints_ = ChokepointList(transaction_types_, events_);
+    chokepoints_ = ChokepointList(events_);
   }
   return *chokepoints_;
 }
