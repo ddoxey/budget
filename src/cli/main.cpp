@@ -1063,7 +1063,7 @@ int main() {
         budget::Money opening(balance, "$");
         table.header({"date", "category", "amount", "balance"},
                      active_profile + " Opening Balance: " + opening.str());
-        std::vector<double> balances;
+        std::vector<budget::ui::DotchartPoint> chart_points;
         std::string last_month;
         for (const auto& event : budget_model.events()) {
           std::string month = event.get_date().to_mm_dd_yyyy().substr(0, 2);
@@ -1095,7 +1095,9 @@ int main() {
           }
           table.row({event.get_date().to_mm_dd_yyyy(), category_label,
                      amt.str(), bal.str()});
-          balances.push_back(event.get_balance());
+          int forecast_day = event.get_date().days_since_epoch() -
+                             projection_start.days_since_epoch();
+          chart_points.push_back({forecast_day, event.get_balance()});
         }
         table.close();
         std::cout << table.str();
@@ -1166,7 +1168,7 @@ int main() {
         if (width < 20) {
           width = 20;
         }
-        auto chart = budget::ui::render_dotchart(balances, width);
+        auto chart = budget::ui::render_dotchart(chart_points, width);
         if (chart.has_value()) {
           std::cout << *chart << std::endl;
         }

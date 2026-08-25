@@ -20,17 +20,17 @@ std::string find_dotchart() {
 
 }  // namespace
 
-std::optional<std::string> render_dotchart(const std::vector<double>& balances,
-                                           int width) {
-  if (balances.empty()) {
+std::optional<std::string> render_dotchart(
+    const std::vector<DotchartPoint>& points, int width) {
+  if (points.empty()) {
     return std::nullopt;
   }
 
   std::ostringstream input;
-  for (double b : balances) {
+  for (const auto& point : points) {
     input.setf(std::ios::fixed);
     input.precision(2);
-    input << b << "\n";
+    input << point.forecast_day << "," << point.balance << "\n";
   }
 
   std::filesystem::path temp_path =
@@ -44,7 +44,7 @@ std::optional<std::string> render_dotchart(const std::vector<double>& balances,
   }
 
   std::ostringstream cmd;
-  cmd << find_dotchart() << " -y %0.0f --color";
+  cmd << find_dotchart() << " -F, -c 2 -y %0.0f --x-min-axis --color";
   if (width > 0) {
     cmd << " --width " << width;
   }
